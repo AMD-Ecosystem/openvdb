@@ -1,4 +1,5 @@
 // Copyright Contributors to the OpenVDB Project
+// Modifications Copyright (C) 2026 Advanced Micro Devices, Inc. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
 /*!
@@ -277,9 +278,9 @@ struct BuildGridTreeRootFunctor
         // process Root
         auto &root = d_data->getRoot();
         root.mTableSize = d_data->nodeCount[2];
-        root.mBackground = NanoRoot<BuildT>::ValueType(0);// background_value
-        root.mMinimum = root.mMaximum = NanoRoot<BuildT>::ValueType(0);
-        root.mAverage = root.mStdDevi = NanoRoot<BuildT>::FloatType(0);
+        root.mBackground = typename NanoRoot<BuildT>::ValueType(0);// background_value
+        root.mMinimum = root.mMaximum = typename NanoRoot<BuildT>::ValueType(0);
+        root.mAverage = root.mStdDevi = typename NanoRoot<BuildT>::FloatType(0);
         root.mBBox = CoordBBox(); // To be further updated after the leaf-level voxel update
 
         // process Tree
@@ -357,9 +358,9 @@ struct InitGridTreeRootFunctor
         // process Root (identical to BuildGridTreeRootFunctor)
         auto &root = d_data->getRoot();
         root.mTableSize = d_data->nodeCount[2];
-        root.mBackground = NanoRoot<BuildT>::ValueType(0);
-        root.mMinimum = root.mMaximum = NanoRoot<BuildT>::ValueType(0);
-        root.mAverage = root.mStdDevi = NanoRoot<BuildT>::FloatType(0);
+        root.mBackground = typename NanoRoot<BuildT>::ValueType(0);
+        root.mMinimum = root.mMaximum = typename NanoRoot<BuildT>::ValueType(0);
+        root.mAverage = root.mStdDevi = typename NanoRoot<BuildT>::FloatType(0);
         root.mBBox = CoordBBox();
 
         // process Tree (identical to BuildGridTreeRootFunctor)

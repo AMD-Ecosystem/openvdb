@@ -1,4 +1,5 @@
 // Copyright Contributors to the OpenVDB Project
+// Modifications Copyright (C) 2026 Advanced Micro Devices, Inc. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
 /*!
@@ -23,6 +24,17 @@ namespace nanovdb::util {
 namespace morphology {
 
 namespace cuda {
+
+// These morphology kernels are written for a 32-lane logical warp: each of the 32
+// lanes owns two 64-bit mask words (2*lane and 2*lane+1) so the 32 lanes together
+// span all 64 words of a Mask<4>, and the per-warp lane math uses (threadIdx.x & 0x1f)
+// / (threadIdx.x >> 5). CUB's WarpReduce/WarpScan default their logical width to the
+// physical warp size, which is 32 on CUDA but 64 on a HIP wave64 device -- a 64-wide
+// collective would then merge two logically-independent 32-lane warps and corrupt the
+// per-warp prefix sums that drive node/leaf placement. Pin the collective width to 32
+// on every target so it stays consistent with the lane math above. The value equals
+// the physical warp on CUDA (a no-op there) and is a valid sub-warp width on HIP.
+static constexpr int kMorphologyLogicalWarpThreads = 32;
 
 template<class BuildT, tools::morphology::NearestNeighbors nnType>
 struct DilateInternalNodesFunctor
@@ -59,7 +71,7 @@ struct DilateInternalNodesFunctor
         auto sOffsetMasks = reinterpret_cast<LowerMaskStencilT>(sOffsetMasksRaw[0]);
         auto sNeighborMasks = reinterpret_cast<LowerMaskStencilT>(sNeighborMasksRaw[0]);
 
-        using WarpReduce = cub::WarpReduce<uint32_t>;
+        using WarpReduce = cub::WarpReduce<uint32_t, kMorphologyLogicalWarpThreads>;
         __shared__ typename WarpReduce::TempStorage temp_storage[WarpsPerBlock];
 
         // TODO: Use all available threads
@@ -307,7 +319,7 @@ struct DilateInternalNodesFunctor
                         auto dilatedTile = dilatedRoot->probeTile(neighborOrigin);
                         uint64_t tileChildIndex =
                             util::PtrDiff(dilatedTile, dilatedRoot->tile(0))
-                            / sizeof(NanoRoot<BuildT>::Tile); // TODO: consider some faster integer division? or a way to avoid this?
+                            / sizeof(typename NanoRoot<BuildT>::Tile); // TODO: consider some faster integer division? or a way to avoid this?
                         auto& outputUpperMask = upperMasks[tileChildIndex];
                         outputUpperMask.setOnAtomic(upperChildIndex);
                         auto& outputLowerMask = lowerMasks[tileChildIndex][upperChildIndex];
@@ -348,7 +360,7 @@ struct MergeInternalNodesFunctor
         auto mergedTile = mergedRoot->probeTile(lower.origin());
         uint64_t tileIndex =
             util::PtrDiff(mergedTile, mergedRoot->tile(0))
-            / sizeof(NanoRoot<BuildT>::Tile); // TODO: consider some faster integer division? or a way to avoid this?
+            / sizeof(typename NanoRoot<BuildT>::Tile); // TODO: consider some faster integer division? or a way to avoid this?
         auto upperChildIndex = NanoUpper<BuildT>::CoordToOffset(lower.origin());
 
         auto& outputUpperMask = upperMasks[tileIndex];
@@ -391,7 +403,7 @@ struct PruneInternalNodesFunctor
             auto prunedTile = prunedRoot->probeTile(srcLeaf.origin());
             uint64_t tileChildIndex =
                 util::PtrDiff(prunedTile, prunedRoot->tile(0))
-                / sizeof(NanoRoot<BuildT>::Tile); // TODO: consider some faster integer division? or a way to avoid
+                / sizeof(typename NanoRoot<BuildT>::Tile); // TODO: consider some faster integer division? or a way to avoid
             auto& outputUpperMask = upperMasks[tileChildIndex];
             outputUpperMask.setOnAtomic(upperChildIndex);
             auto& outputLowerMask = lowerMasks[tileChildIndex][upperChildIndex];
@@ -435,7 +447,7 @@ struct RefineInternalNodesFunctor
                 auto prunedTile = prunedRoot->probeTile(refinedOrigin);
                 uint64_t tileChildIndex =
                     util::PtrDiff(prunedTile, prunedRoot->tile(0))
-                    / sizeof(NanoRoot<BuildT>::Tile); // TODO: consider some faster integer division? or a way to avoid
+                    / sizeof(typename NanoRoot<BuildT>::Tile); // TODO: consider some faster integer division? or a way to avoid
                 auto& outputUpperMask = upperMasks[tileChildIndex];
                 outputUpperMask.setOnAtomic(upperChildIndex);
                 auto& outputLowerMask = lowerMasks[tileChildIndex][upperChildIndex];
@@ -470,7 +482,7 @@ struct CoarsenInternalNodesFunctor
             auto prunedTile = prunedRoot->probeTile(coarsenedOrigin);
             uint64_t tileChildIndex =
                 util::PtrDiff(prunedTile, prunedRoot->tile(0))
-                / sizeof(NanoRoot<BuildT>::Tile); // TODO: consider some faster integer division? or a way to avoid
+                / sizeof(typename NanoRoot<BuildT>::Tile); // TODO: consider some faster integer division? or a way to avoid
             auto& outputUpperMask = upperMasks[tileChildIndex];
             outputUpperMask.setOnAtomic(upperChildIndex);
             auto& outputLowerMask = lowerMasks[tileChildIndex][upperChildIndex];
@@ -505,7 +517,7 @@ struct EnumerateNodesFunctor
         auto upperMasks = static_cast<UpperMaskArrayT>(upperMasks_);
         auto lowerMasks = static_cast<LowerMaskArrayT>(lowerMasks_);
 
-        using WarpReduce = cub::WarpReduce<uint32_t>;
+        using WarpReduce = cub::WarpReduce<uint32_t, kMorphologyLogicalWarpThreads>;
         __shared__ typename WarpReduce::TempStorage temp_storage[WarpsPerBlock];
 
         for ( std::size_t jj = sliceID*LowerNodesPerSlice + warpID; jj < (sliceID+1)*LowerNodesPerSlice; jj += WarpsPerBlock ) {
@@ -554,7 +566,7 @@ struct ProcessLowerNodesFunctor
         auto upperMasks = static_cast<UpperMaskArrayT>(upperMasks_);
         auto lowerMasks = static_cast<LowerMaskArrayT>(lowerMasks_);
 
-        using WarpScan = cub::WarpScan<uint32_t>;
+        using WarpScan = cub::WarpScan<uint32_t, kMorphologyLogicalWarpThreads>;
         __shared__ typename WarpScan::TempStorage temp_storage[WarpsPerBlock];
 
         const auto& dstTree = dstGrid->tree();

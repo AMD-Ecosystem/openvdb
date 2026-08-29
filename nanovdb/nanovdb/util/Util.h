@@ -1,4 +1,5 @@
 // Copyright Contributors to the OpenVDB Project
+// Modifications Copyright (C) 2026 Advanced Micro Devices, Inc. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
 /*!
@@ -692,7 +693,17 @@ __hostdev__ inline uint32_t countOn(uint64_t v)
 NANOVDB_HOSTDEV_DISABLE_WARNING
 __hostdev__ inline uint64_t atomicOr(uint64_t* target, uint64_t mask)
 {
-#if defined(__CUDA_ARCH__) || defined(__HIP__)
+// Use the device-pass-only macros here: __CUDA_ARCH__ (nvcc) and __HIP_DEVICE_COMPILE__
+// (hipcc) are the ones that gate the device atomic intrinsic. __HIP__ is defined in BOTH
+// the host and device passes of hipcc, so gating on it would (wrongly) select the device
+// ::atomicOr builtin during the host pass, where it is not available.
+#if defined(__HIP_DEVICE_COMPILE__)
+    // On hipcc the device+host of a __host__ __device__ function share one AST parse,
+    // so a device-only ::atomicOr builtin is not name-visible during host analysis.
+    // The __hip_atomic_fetch_or compiler builtin is valid in a __host__ __device__
+    // body and lowers to the correct 64-bit device atomic on gfx942/gfx950.
+    return __hip_atomic_fetch_or(target, mask, __ATOMIC_RELAXED, __HIP_MEMORY_SCOPE_AGENT);
+#elif defined(__CUDA_ARCH__)
     return static_cast<uint64_t>(::atomicOr(reinterpret_cast<unsigned long long int*>(target),
                                             static_cast<unsigned long long int>(mask)));
 #elif __cplusplus >= 202002L
@@ -716,7 +727,10 @@ __hostdev__ inline uint64_t atomicOr(uint64_t* target, uint64_t mask)
 NANOVDB_HOSTDEV_DISABLE_WARNING
 __hostdev__ inline uint64_t atomicAnd(uint64_t* target, uint64_t mask)
 {
-#if defined(__CUDA_ARCH__) || defined(__HIP__)
+// See atomicOr above: use the __host__ __device__-safe HIP atomic builtin.
+#if defined(__HIP_DEVICE_COMPILE__)
+    return __hip_atomic_fetch_and(target, mask, __ATOMIC_RELAXED, __HIP_MEMORY_SCOPE_AGENT);
+#elif defined(__CUDA_ARCH__)
     return static_cast<uint64_t>(::atomicAnd(reinterpret_cast<unsigned long long int*>(target),
                                              static_cast<unsigned long long int>(mask)));
 #elif __cplusplus >= 202002L

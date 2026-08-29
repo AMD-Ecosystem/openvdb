@@ -1,4 +1,5 @@
 // Copyright Contributors to the OpenVDB Project
+// Modifications Copyright (C) 2026 Advanced Micro Devices, Inc. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
 /*!
@@ -14,8 +15,18 @@
 #ifndef NANOVDB_UTIL_CUDA_UTIL_H_HAS_BEEN_INCLUDED
 #define NANOVDB_UTIL_CUDA_UTIL_H_HAS_BEEN_INCLUDED
 
+// On AMD ROCm the CUDA runtime/library tokens the NanoVDB tooling layer spells are
+// remapped to their HIP peers by this single shim, and the 32-lane width-pinned warp
+// primitives are provided for the cross-lane kernels. Included before <cuda*.h> so
+// the cuda* -> hip* type/function remaps are visible to every downstream include.
+// On NVIDIA these are no-op includes; the .cu spelling + extension are kept unchanged.
+#if defined(__HIP_PLATFORM_AMD__) || defined(__HIPCC__)
+#include <nanovdb/util/cuda/cuda_to_hip.h>
+#include <nanovdb/util/cuda/AmdWarp.h>
+#else
 #include <cuda.h>
 #include <cuda_runtime_api.h>
+#endif
 #include <vector>
 #include <nanovdb/util/Util.h> // for stderr and NANOVDB_ASSERT
 
@@ -294,7 +305,7 @@ inline cudaError_t memPrefetchAsync(const void* devPtr, size_t count, int dstDev
 }
 #endif
 
-#if defined(__CUDACC__)// the following functions only run on the GPU!
+#if defined(__CUDACC__) || defined(__HIPCC__)// the following functions only run on the GPU!
 
 /// @brief Cuda kernel that launches device lambda functions
 /// @param numItems Problem size
@@ -379,13 +390,13 @@ void dynamicSharedMemoryLauncher(const size_t numItems, const size_t smem_size, 
         <<<numItems, Operator::MaxThreadsPerBlock, smem_size, stream>>>( args ... );
 }
 
-#endif// __CUDACC__
+#endif// __CUDACC__ || __HIPCC__
 
 }// namespace util::cuda ============================================================
 
 }// namespace nanovdb ===============================================================
 
-#if defined(__CUDACC__)// the following functions only run on the GPU!
+#if defined(__CUDACC__) || defined(__HIPCC__)// the following functions only run on the GPU!
 template<typename Func, typename... Args>
 [[deprecated("Use nanovdb::cuda::lambdaKernel instead")]]
 __global__ void cudaLambdaKernel(const size_t numItems, Func func, Args... args)
@@ -394,6 +405,6 @@ __global__ void cudaLambdaKernel(const size_t numItems, Func func, Args... args)
     if (tid >= numItems) return;
     func(tid, args...);
 }
-#endif// __CUDACC__
+#endif// __CUDACC__ || __HIPCC__
 
 #endif// NANOVDB_UTIL_CUDA_UTIL_H_HAS_BEEN_INCLUDED
