@@ -30,6 +30,10 @@ option(NANOVDB_BUILD_PYTHON_MODULE "Build the nanovdb Python module" OFF)
 
 option(NANOVDB_USE_INTRINSICS "Build with hardware intrinsics support" OFF)
 option(NANOVDB_USE_CUDA "Build with CUDA support" OFF)
+# AMD ROCm/HIP support for the NanoVDB GPU tooling layer: keep the .cu spelling +
+# extension and compile them with hipcc via the HIP language. Mutually exclusive
+# with NANOVDB_USE_CUDA.
+option(NANOVDB_USE_HIP "Build the GPU tooling layer with AMD ROCm/HIP support" OFF)
 option(NANOVDB_CUDA_KEEP_PTX "Keep CUDA PTX" OFF)
 option(NANOVDB_CUDA_WERROR "Treat all NVCC diagnostics as errors" ON)
 option(NANOVDB_USE_OLD_ACCESSOR "Use the old (buggy) ReadAccessor instead of the new fixed one" OFF)
@@ -56,6 +60,11 @@ if(NANOVDB_USE_OPENVDB)
     If you are linking NanoVDB against OpenVDB, then you
     need to use TBB, (i.e. -DNANOVDB_USE_TBB=ON).")
   endif()
+endif()
+
+if(NANOVDB_USE_CUDA AND NANOVDB_USE_HIP)
+  message(FATAL_ERROR "NANOVDB_USE_CUDA and NANOVDB_USE_HIP are mutually exclusive; "
+                      "select exactly one GPU backend.")
 endif()
 
 
@@ -144,6 +153,35 @@ if(NANOVDB_USE_CUDA)
   )
 
   find_package(NCCL)
+endif()
+
+if(NANOVDB_USE_HIP)
+  # Compile the existing .cu tree with hipcc via CMake's HIP language. The .cu
+  # sources keep their CUDA spelling; the util/cuda/cuda_to_hip.h shim (pulled in
+  # via util/cuda/Util.h and the hip_compat forwarding headers on the include path)
+  # remaps the CUDA runtime + cub/thrust tokens to their HIP peers.
+  # KB: cmake-hip-language-on-cu-sources-seam, cuda-to-hip-single-shim-header-keep-cu-extension.
+  set(CMAKE_HIP_STANDARD 17)
+  set(CMAKE_HIP_STANDARD_REQUIRED ON)
+
+  if(NOT DEFINED CMAKE_HIP_ARCHITECTURES)
+    # Default to gfx942 (MI300X); gfx950 (MI350X/MI355X) is also a supported target.
+    set(CMAKE_HIP_ARCHITECTURES gfx942)
+  endif()
+
+  enable_language(HIP)
+
+  find_package(hip REQUIRED)
+  find_package(hipcub REQUIRED)
+  find_package(rocprim REQUIRED)
+  find_package(rocthrust REQUIRED)
+
+  # THRUST_DEVICE_SYSTEM_HIP selects the rocThrust HIP device backend. clang/hipcc
+  # enables extended device lambdas natively, so nvcc's --expt-extended-lambda has NO
+  # HIP analog and must NOT be added (hipcc rejects it as an unknown argument).
+  # HIP_ENABLE_WARP_SYNC_BUILTINS turns on the native __shfl_*_sync/__syncwarp with the
+  # required 64-bit lane mask, consistent with the AmdWarp.h width-pin.
+  set(CMAKE_HIP_FLAGS "-DTHRUST_DEVICE_SYSTEM=THRUST_DEVICE_SYSTEM_HIP -DHIP_ENABLE_WARP_SYNC_BUILTINS ${CMAKE_HIP_FLAGS}")
 endif()
 
 if(NANOVDB_USE_OPENVDB)
@@ -367,6 +405,17 @@ if(NANOVDB_USE_CUDA)
     target_compile_definitions(nanovdb INTERFACE -DNANOVDB_USE_NCCL)
     target_link_libraries(nanovdb INTERFACE NCCL::NCCL)
   endif()
+endif()
+
+if(NANOVDB_USE_HIP)
+  target_compile_definitions(nanovdb INTERFACE -DNANOVDB_USE_CUDA -DNANOVDB_USE_HIP -D__HIP_PLATFORM_AMD__)
+  # The hip_compat directory holds forwarding headers (cuda.h, cuda_runtime_api.h,
+  # cub/cub.cuh, ...) that resolve the CUDA-spelled includes in the .cu sources to
+  # their HIP peers. It must precede the system include dirs on the HIP path.
+  target_include_directories(nanovdb BEFORE INTERFACE
+    ${CMAKE_CURRENT_LIST_DIR}/util/cuda/hip_compat)
+  # hipCUB exports the imported target hip::hipcub; rocThrust exports roc::rocthrust.
+  target_link_libraries(nanovdb INTERFACE hip::device hip::hipcub roc::rocthrust)
 endif()
 
 if(NANOVDB_USE_MAGICAVOXEL)

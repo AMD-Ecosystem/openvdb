@@ -1,4 +1,5 @@
 // Copyright Contributors to the OpenVDB Project
+// Modifications Copyright (C) 2026 Advanced Micro Devices, Inc. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
 /*!
@@ -1182,7 +1183,7 @@ struct SetLeafInactiveVoxelValuesFunctor
         const uint32_t n = tid & 511u;
         if (leaf.mValueMask.isOn(n)) return;
         if constexpr(util::is_same<BuildT, Point>::value) {
-            const uint32_t m = leaf.mValueMask.findPrev<true>(n - 1);
+            const uint32_t m = leaf.mValueMask.template findPrev<true>(n - 1);
             leaf.mValues[n] = m < 512u ? leaf.mValues[m] : 0u;
         } else if constexpr(!BuildTraits<BuildT>::is_special) {
             leaf.mValues[n] = typename NanoLeaf<BuildT>::ValueType(0);// value of inactive voxels

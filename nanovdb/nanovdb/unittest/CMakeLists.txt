@@ -93,6 +93,35 @@ if(NANOVDB_USE_CUDA)
   endif()
 endif()
 
+# AMD ROCm/HIP: compile the SAME .cu test sources with hipcc via the HIP language.
+# The multi-GPU (NCCL) test is deferred with the multi-GPU DeviceMesh surface.
+if(NANOVDB_USE_HIP)
+  set(_nanovdb_hip_tests
+    nanovdb_test_cuda                 TestNanoVDB.cu
+    nanovdb_test_cuda_memory_resource TestMemoryResource.cu
+    nanovdb_test_cuda_util            TestUtilCuda.cu
+    nanovdb_test_cuda_buffer          TestBuffer.cu)
+  list(LENGTH _nanovdb_hip_tests _n)
+  math(EXPR _last "${_n} - 1")
+  foreach(_i RANGE 0 ${_last} 2)
+    list(GET _nanovdb_hip_tests ${_i} _tgt)
+    math(EXPR _j "${_i} + 1")
+    list(GET _nanovdb_hip_tests ${_j} _src)
+    add_executable(${_tgt} "${_src}")
+    set_source_files_properties("${_src}" PROPERTIES LANGUAGE HIP)
+    target_link_libraries(${_tgt} PRIVATE nanovdb GTest::GTest GTest::Main)
+    add_test(${_tgt}_unit_test ${_tgt})
+  endforeach()
+
+  # Second variant of the util test with every allocation forced synchronous
+  # (hipMalloc/hipFree) -- the pool-less-device configuration.
+  add_executable(nanovdb_test_cuda_util_sync "TestUtilCuda.cu")
+  set_source_files_properties("TestUtilCuda.cu" PROPERTIES LANGUAGE HIP)
+  target_compile_definitions(nanovdb_test_cuda_util_sync PRIVATE NANOVDB_USE_SYNC_CUDA_MALLOC)
+  target_link_libraries(nanovdb_test_cuda_util_sync PRIVATE nanovdb GTest::GTest GTest::Main)
+  add_test(nanovdb_cuda_util_sync_unit_test nanovdb_test_cuda_util_sync)
+endif()
+
 # -----------------------------------------------------------------------------
 
 if(NOT (NANOVDB_USE_TBB AND NANOVDB_USE_OPENVDB))

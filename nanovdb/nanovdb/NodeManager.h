@@ -1,4 +1,5 @@
 // Copyright Contributors to the OpenVDB Project
+// Modifications Copyright (C) 2026 Advanced Micro Devices, Inc. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
 /*!
@@ -339,8 +340,8 @@ NodeManagerHandle<BufferT> createNodeManager(const NanoGrid<BuildT> &grid,
 
 } // namespace nanovdb
 
-#if defined(__CUDACC__)
+#if defined(__CUDACC__) || defined(__HIPCC__)
 #include <nanovdb/cuda/NodeManager.cuh>
-#endif// defined(__CUDACC__)
+#endif// defined(__CUDACC__) || defined(__HIPCC__)
 
 #endif // NANOVDB_NODEMANAGER_H_HAS_BEEN_INCLUDED

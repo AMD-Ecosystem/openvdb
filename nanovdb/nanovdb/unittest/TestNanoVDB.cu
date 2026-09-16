@@ -1,4 +1,5 @@
 // Copyright Contributors to the OpenVDB Project
+// Modifications Copyright (C) 2026 Advanced Micro Devices, Inc. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
 #include <vector>
@@ -29,8 +30,16 @@
 #include <nanovdb/util/Timer.h>
 #include <nanovdb/io/IO.h>
 #include <nanovdb/cuda/UnifiedBuffer.h>
+// AMD ROCm/HIP (single-GPU-first scope): the CUDA Driver-API VMM DeviceStreamMap
+// and the NCCL multi-GPU DeviceMesh are deferred surfaces (see cuda_to_hip.h
+// "Deferred surfaces"). NANOVDB_HIP_DEFER_DRIVER_API (set on the HIP path unless
+// NANOVDB_USE_NCCL) guards their includes + the tests that exercise them OUT of the
+// HIP build so nanovdb_test_cuda compiles under hipcc; every other test case in
+// this TU (all single-GPU grid-building/stats/ballot tooling) still builds and runs.
+#if !defined(NANOVDB_HIP_DEFER_DRIVER_API)
 #include <nanovdb/cuda/DeviceStreamMap.h>
 #include <nanovdb/cuda/DeviceMesh.h>
+#endif
 
 #include <cuda.h>
 #include <cuda_runtime_api.h>
@@ -217,6 +226,12 @@ TEST(TestNanoVDBCUDA, CudaStr)
    nanovdb::test::cudaStr();
 }
 
+// AMD ROCm/HIP: testKernel calls cudaGetDevice() DEVICE-side (valid on CUDA, where
+// cudaGetDevice has a device overload; hipGetDevice is host-only). It is used ONLY by
+// the DeviceStreamMap + DeviceMesh tests, which are the deferred Driver-API/NCCL
+// surfaces gated out on the HIP path. Gate the kernel and both tests together so the
+// HIP build has no dangling device-side host-runtime call.
+#if !defined(NANOVDB_HIP_DEFER_DRIVER_API)
 __global__ void testKernel(int device)
 {
     int dev;
@@ -334,6 +349,7 @@ TEST(TestNanoVDBCUDA, DeviceMesh)
 
     cudaSetDevice(current); // Restore device so subsequent tests don't fail
 }
+#endif // !NANOVDB_HIP_DEFER_DRIVER_API (DeviceStreamMap + DeviceMesh)
 
 TEST(TestNanoVDBCUDA, Basic_CudaPointsToGrid_float)
 {

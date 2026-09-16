@@ -1,4 +1,5 @@
 // Copyright Contributors to the OpenVDB Project
+// Modifications Copyright (C) 2026 Advanced Micro Devices, Inc. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
 /*!
@@ -19,6 +20,14 @@
 
 #if defined(__CUDA_ARCH__)
 #include <cuda/std/limits>// for ::cuda::std::numeric_limits
+#endif
+
+// AMD ROCm/HIP: the device *ComponentAtomic helpers below call the library atomics
+// atomicMin/atomicMax. Under nvcc those come in with the CUDA runtime, but util/Util.h
+// (included above) does not pull the HIP runtime, so pull the HIP atomic declarations
+// in explicitly on the HIP path so the CUDA-spelled atomicMin/atomicMax resolve.
+#if defined(__HIPCC__)
+#include <hip/hip_runtime.h>
 #endif
 
 namespace nanovdb {// =================================================================
@@ -526,7 +535,7 @@ public:
             mVec[2] = other[2];
         return *this;
     }
-#if defined(__CUDACC__) // the following functions only run on the GPU!
+#if defined(__CUDACC__) || defined(__HIPCC__) // the following functions only run on the GPU!
     __device__ inline Coord& minComponentAtomic(const Coord& other)
     {
         atomicMin(&mVec[0], other[0]);
@@ -758,7 +767,7 @@ public:
             mVec[1] = other[1];
         return *this;
     }
-#if defined(__CUDACC__) // the following functions only run on the GPU!
+#if defined(__CUDACC__) || defined(__HIPCC__) // the following functions only run on the GPU!
     __device__ inline Coord2& minComponentAtomic(const Coord2& other)
     {
         atomicMin(&mVec[0], other[0]);
@@ -2082,7 +2091,7 @@ struct BBox<CoordT, false> : public BaseBBox<CoordT>
         return bbox;
     }
 
-#if defined(__CUDACC__) // the following functions only run on the GPU!
+#if defined(__CUDACC__) || defined(__HIPCC__) // the following functions only run on the GPU!
     __device__ inline BBox& expandAtomic(const CoordT& ijk)
     {
         mCoord[0].minComponentAtomic(ijk);

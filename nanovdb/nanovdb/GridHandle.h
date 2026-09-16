@@ -1,4 +1,5 @@
 // Copyright Contributors to the OpenVDB Project
+// Modifications Copyright (C) 2026 Advanced Micro Devices, Inc. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
 /*!
@@ -683,8 +684,8 @@ mergeGrids(const VectorT<GridHandle<BufferT>> &handles, const BufferT* pool = nu
 
 } // namespace nanovdb
 
-#if defined(__CUDACC__)
+#if defined(__CUDACC__) || defined(__HIPCC__)
 #include <nanovdb/cuda/GridHandle.cuh>
-#endif// defined(__CUDACC__)
+#endif// defined(__CUDACC__) || defined(__HIPCC__)
 
 #endif // NANOVDB_GRID_HANDLE_H_HAS_BEEN_INCLUDED

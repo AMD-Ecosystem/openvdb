@@ -1,4 +1,5 @@
 // Copyright Contributors to the OpenVDB Project
+// Modifications Copyright (C) 2026 Advanced Micro Devices, Inc. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
 /*!
@@ -452,8 +453,10 @@ buildVoxelBlockManager(
 
 } // namespace nanovdb
 
-#if defined(__CUDACC__)
+// Pull in the device VoxelBlockManager tools under nvcc (__CUDACC__) OR hipcc
+// (__HIPCC__), so nanovdb::tools::cuda::VoxelBlockManager is declared on the HIP path.
+#if defined(__CUDACC__) || defined(__HIPCC__)
 #include <nanovdb/tools/cuda/VoxelBlockManager.cuh>
-#endif// defined(__CUDACC__)
+#endif// defined(__CUDACC__) || defined(__HIPCC__)
 
 #endif // NANOVDB_VOXELBLOCKMANAGER_H_HAS_BEEN_INCLUDED
