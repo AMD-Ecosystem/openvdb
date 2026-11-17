@@ -415,7 +415,17 @@ if(NANOVDB_USE_HIP)
   target_include_directories(nanovdb BEFORE INTERFACE
     ${CMAKE_CURRENT_LIST_DIR}/util/cuda/hip_compat)
   # hipCUB exports the imported target hip::hipcub; rocThrust exports roc::rocthrust.
-  target_link_libraries(nanovdb INTERFACE hip::device hip::hipcub roc::rocthrust)
+  # These carry HIP device usage requirements transitively
+  # (hip::hipcub -> roc::rocprim_hip -> hip::device), and hip::device contributes
+  # "-x hip --offload-arch=<gfx...>" as INTERFACE compile options. nanovdb is a
+  # header-only INTERFACE library consumed by CPU-only C++ targets as well
+  # (nanovdb_print, nanovdb_validate, nanovdb_test_nanovdb); propagating those options
+  # to them makes the host compiler fail with
+  #   c++: error: unrecognized command-line option '--offload-arch=gfx...'
+  # Keep nanovdb itself free of HIP device requirements and expose them on a separate
+  # interface target that only HIP-language consumers link against.
+  add_library(nanovdb_hip INTERFACE)
+  target_link_libraries(nanovdb_hip INTERFACE nanovdb hip::device hip::hipcub roc::rocthrust)
 endif()
 
 if(NANOVDB_USE_MAGICAVOXEL)
